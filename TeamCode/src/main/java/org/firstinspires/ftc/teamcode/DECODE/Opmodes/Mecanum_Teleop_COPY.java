@@ -9,7 +9,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
-import org.firstinspires.ftc.teamcode.INTO_THE_DEEP.Odometry.GoBildaPinpointDriver;
+import org.firstinspires.ftc.teamcode.Odometry.GoBildaPinpointDriver;
 
 import java.util.Locale;
 
