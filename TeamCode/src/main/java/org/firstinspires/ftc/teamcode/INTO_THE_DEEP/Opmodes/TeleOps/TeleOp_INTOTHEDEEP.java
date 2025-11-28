@@ -14,7 +14,7 @@ import org.firstinspires.ftc.teamcode.INTO_THE_DEEP.Odometry.GoBildaPinpointDriv
 import java.util.Locale;
 
 @com.qualcomm.robotcore.eventloop.opmode.TeleOp(name="Mecanum_TeleOp_Java", group="Linear Opmode")
-public class Mecanum_Teleop extends LinearOpMode {
+public class TeleOp_INTOTHEDEEP extends LinearOpMode {
 
     // Declare OpMode members.
     GoBildaPinpointDriver odo;
