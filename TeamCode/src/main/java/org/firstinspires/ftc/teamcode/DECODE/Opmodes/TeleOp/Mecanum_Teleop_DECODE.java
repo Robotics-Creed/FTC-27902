@@ -1,11 +1,8 @@
-package org.firstinspires.ftc.teamcode.DECODE.Opmodes;
+package org.firstinspires.ftc.teamcode.DECODE.Opmodes.TeleOp;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.robot.RobotState;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
@@ -15,7 +12,7 @@ import org.firstinspires.ftc.teamcode.Odometry.GoBildaPinpointDriver;
 import java.util.Locale;
 
 @com.qualcomm.robotcore.eventloop.opmode.TeleOp(name="Mecanum_TeleOp_Java", group="Linear Opmode")
-public class Mecanum_Teleop_COPY extends LinearOpMode {
+public class Mecanum_Teleop_DECODE extends LinearOpMode {
 
     // Declare OpMode members.
     GoBildaPinpointDriver odo;
