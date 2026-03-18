@@ -2,206 +2,235 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 /**
- * SpindexerOpMode
+ * SpindexerOpMode — Non-Blocking State Machine Version
  *
- * Controls a 3-slot spindexer (ball indexer) and a shooter/drivetrain.
+ * Controls a 3-slot spindexer disc (servo) and a ball scoop (servo).
+ * Uses a state machine so the main loop NEVER blocks — driving, other
+ * mechanisms, and telemetry all continue running during scoop motion.
  *
- * GAMEPAD CONTROLS (Gamepad 2 recommended for operator):
- *   Right Bumper (RB)  → Advance spindexer to next open slot
- *   Left Bumper  (LB)  → Fire / shoot the ball (runs shooter motor briefly)
+ * GAMEPAD CONTROLS (Gamepad 2 - operator):
+ *   Right Bumper (RB)  → Advance spindexer to the next slot
+ *   Left Bumper  (LB)  → Trigger scoop: extend → hold → retract automatically
  *
- * HARDWARE CONFIG NAMES (match these in your Robot Controller config):
- *   "spindexer"   → DcMotor controlling the rotating disc/spindexer
- *   "shooter"     → DcMotor controlling the flywheel / launcher
+ * HARDWARE CONFIG NAMES (match your Robot Controller app exactly):
+ *   "spindexer"  → Servo rotating the 3-slot disc
+ *   "scoop"      → Servo that scoops the ball onto the ramp
  *
- * HOW THE SPINDEXER WORKS:
- *   - The disc has 3 equally-spaced slots (120° apart).
- *   - Each press of RB rotates the disc by exactly ONE slot (120°).
- *   - A slot counter (0, 1, 2) tracks which slot is currently in the
- *     firing position, cycling back to 0 after slot 2.
- *   - After all 3 slots have been fired, the driver is notified via
- *     telemetry that the spindexer is empty.
+ * TUNING:
+ *   SLOT_POSITIONS[]    — Servo positions (0.0–1.0) for each of the 3 slots.
+ *                         Estimates for a 180° servo: 0.00, 0.33, 0.67.
+ *                         Tune until each slot physically aligns with the ramp.
+ *   SCOOP_RETRACTED_POS — Resting position of the scoop (out of the ball's path).
+ *   SCOOP_EXTENDED_POS  — Active position (sweeps ball onto ramp).
+ *   SCOOP_HOLD_MS       — How long (ms) the scoop stays extended before retracting.
  */
+
 @TeleOp(name = "Spindexer TeleOp", group = "TeleOp")
 public class SpindexerOpMode extends LinearOpMode {
 
-    // ─── Hardware ────────────────────────────────────────────────────────────
-    private DcMotor spindexerMotor;
-    private DcMotor shooterMotor;
+    // ─── Hardware ─────────────────────────────────────────────────────────────
+    private Servo spindexerServo;
+    private Servo scoopServo;
 
-    // ─── Spindexer Constants ─────────────────────────────────────────────────
+    // ─── Spindexer Slot Positions ─────────────────────────────────────────────
+    private static final double[] SLOT_POSITIONS = {
+        0.00,   // Slot 1 — home / starting position
+        0.33,   // Slot 2 — 120° from slot 1
+        0.67    // Slot 3 — 240° from slot 1
+    };
 
-    /** Number of ball slots on the spindexer disc. */
-    private static final int SLOT_COUNT = 3;
+    // ─── Scoop Servo Positions ────────────────────────────────────────────────
+    private static final double SCOOP_RETRACTED_POS = 0.0;
+    private static final double SCOOP_EXTENDED_POS  = 1.0;
+
+    /** How long (ms) the scoop holds its extended position before retracting. */
+    private static final double SCOOP_HOLD_MS = 600;
+
+    // ─── Scoop State Machine ──────────────────────────────────────────────────
+    /**
+     * All possible states of the scoop.
+     *
+     *   IDLE       — Scoop is retracted and waiting for a button press.
+     *   EXTENDING  — Scoop servo is moving to the extended position.
+     *                We wait a brief moment for the servo to physically reach it.
+     *   HOLDING    — Scoop is fully extended; waiting SCOOP_HOLD_MS before retracting.
+     *   RETRACTING — Scoop servo is returning to the retracted position.
+     */
+    private enum ScoopState {
+        IDLE,
+        EXTENDING,
+        HOLDING,
+        RETRACTING
+    }
+
+    private ScoopState scoopState = ScoopState.IDLE;
 
     /**
-     * Encoder ticks per full revolution of the spindexer motor.
-     * Common values:
-     *   GoBILDA 5202 (312 RPM) = 537.7 ticks/rev
-     *   REV HD Hex (40:1)      = 1120 ticks/rev
-     *   Adjust to match YOUR motor + gearbox.
+     * How long (ms) to wait after commanding EXTENDING before assuming
+     * the servo has physically reached the extended position.
+     * Increase if your servo is slow or if HOLDING starts too early.
      */
-    private static final double TICKS_PER_REV = 537.7;
+    private static final double SERVO_TRAVEL_MS = 300;
 
-    /** Ticks needed to rotate the disc by one slot (1/3 of a full revolution). */
-    private static final int TICKS_PER_SLOT = (int) (TICKS_PER_REV / SLOT_COUNT);
-
-    /** Motor power used while rotating to the next slot. */
-    private static final double SPINDEXER_POWER = 0.5;
-
-    // ─── Shooter Constants ────────────────────────────────────────────────────
-
-    /** Power level for the shooter flywheel. */
-    private static final double SHOOTER_POWER = 1.0;
-
-    /**
-     * How long (ms) to run the shooter motor when firing.
-     * Tune this so the ball is actually launched.
-     */
-    private static final long SHOOT_DURATION_MS = 800;
-
-    // ─── State ───────────────────────────────────────────────────────────────
-
-    /** Index of the current slot that is loaded and ready to fire (0, 1, or 2). */
+    // ─── State ────────────────────────────────────────────────────────────────
+    /** Index of the slot currently in the active position (0, 1, or 2). */
     private int currentSlot = 0;
 
-    /** Tracks how many balls have been fired this match. */
-    private int ballsFired = 0;
+    /** General-purpose timer reused for each state transition. */
+    private final ElapsedTime stateTimer = new ElapsedTime();
 
-    /** Debounce timers so a single button press counts as one action. */
+    /** Debounce timers — prevent a held button from firing repeatedly. */
     private final ElapsedTime spindexerDebounce = new ElapsedTime();
-    private final ElapsedTime shooterDebounce   = new ElapsedTime();
+    private final ElapsedTime scoopDebounce     = new ElapsedTime();
 
-    /** Minimum ms between button re-triggers. */
-    private static final double DEBOUNCE_MS = 300;
+    private static final double DEBOUNCE_MS = 350;
 
     // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     public void runOpMode() {
 
-        // ── Hardware Mapping ────────────────────────────────────────────────
-        spindexerMotor = hardwareMap.get(DcMotor.class, "spindexer");
-        shooterMotor   = hardwareMap.get(DcMotor.class, "shooter");
+        // ── Hardware Mapping ─────────────────────────────────────────────────
+        spindexerServo = hardwareMap.get(Servo.class, "spindexer");
+        scoopServo     = hardwareMap.get(Servo.class, "scoop");
 
-        // Configure spindexer for encoder-based positioning
-        spindexerMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        spindexerMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        spindexerMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        // Park servos at starting positions before the match
+        spindexerServo.setPosition(SLOT_POSITIONS[currentSlot]);
+        scoopServo.setPosition(SCOOP_RETRACTED_POS);
 
-        // Shooter runs open-loop (no encoder needed)
-        shooterMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        shooterMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-
-        // Flip direction if your motor is wired backwards
-        // spindexerMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-        // shooterMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-
-        telemetry.addLine("Spindexer ready. Waiting for start...");
+        telemetry.addLine("Spindexer ready — waiting for start...");
         telemetry.update();
 
         waitForStart();
+        stateTimer.reset();
 
-        // ── Main Loop ───────────────────────────────────────────────────────
+        // ── Main TeleOp Loop ──────────────────────────────────────────────────
         while (opModeIsActive()) {
 
-            // ── Advance Spindexer (Right Bumper) ────────────────────────────
-            if (gamepad2.right_bumper && spindexerDebounce.milliseconds() > DEBOUNCE_MS) {
-                spindexerDebounce.reset();
-                advanceSpindexer();
-            }
+            handleSpindexerInput();   // Check RB and rotate disc if needed
+            runScoopStateMachine();   // Advance scoop state based on elapsed time
+            handleScoopInput();       // Check LB and kick off scoop if IDLE
 
-            // ── Shoot Ball (Left Bumper) ─────────────────────────────────────
-            if (gamepad2.left_bumper && shooterDebounce.milliseconds() > DEBOUNCE_MS) {
-                shooterDebounce.reset();
-                shootBall();
-            }
-
-            // ── Telemetry ────────────────────────────────────────────────────
             updateTelemetry();
-        }
 
-        // Safety: stop motors when OpMode ends
-        spindexerMotor.setPower(0);
-        shooterMotor.setPower(0);
+            // ── Add your drivetrain / other mechanism code below ─────────────
+            // e.g. drive motors, lift control, etc. — none of it is blocked.
+        }
     }
 
-    // ─── Methods ──────────────────────────────────────────────────────────────
+    // ─── Input Handlers ───────────────────────────────────────────────────────
 
     /**
-     * Rotates the spindexer forward by one slot (120°).
-     * Uses RUN_TO_POSITION so the motor stops precisely at the next slot.
+     * Right Bumper → advance the spindexer to the next slot.
+     * Instant servo command — no state machine needed.
      */
-    private void advanceSpindexer() {
-        if (ballsFired >= SLOT_COUNT) {
-            // Spindexer is empty — do not rotate further
-            telemetry.addLine("⚠ Spindexer empty! Reload before spinning.");
-            telemetry.update();
-            return;
+    private void handleSpindexerInput() {
+        if (gamepad2.right_bumper && spindexerDebounce.milliseconds() > DEBOUNCE_MS) {
+            spindexerDebounce.reset();
+            currentSlot = (currentSlot + 1) % SLOT_POSITIONS.length;
+            spindexerServo.setPosition(SLOT_POSITIONS[currentSlot]);
         }
-
-        // Calculate the absolute target encoder position for the next slot
-        int targetPosition = spindexerMotor.getCurrentPosition() + TICKS_PER_SLOT;
-
-        spindexerMotor.setTargetPosition(targetPosition);
-        spindexerMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        spindexerMotor.setPower(SPINDEXER_POWER);
-
-        // Wait until the motor reaches the target (non-blocking alternative below)
-        while (opModeIsActive() && spindexerMotor.isBusy()) {
-            telemetry.addData("Spindexer", "Moving to slot %d...", currentSlot + 1);
-            telemetry.update();
-        }
-
-        // Stop and switch back to encoder mode for the next command
-        spindexerMotor.setPower(0);
-        spindexerMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-
-        // Advance slot index (wraps 2 → 0)
-        currentSlot = (currentSlot + 1) % SLOT_COUNT;
     }
 
     /**
-     * Runs the shooter motor for SHOOT_DURATION_MS milliseconds to launch a ball.
-     * Counts the ball as fired and alerts the driver if all slots are now empty.
+     * Left Bumper → start a scoop cycle, but only if the scoop is currently IDLE.
+     * Pressing during an active scoop cycle is safely ignored.
      */
-    private void shootBall() {
-        if (ballsFired >= SLOT_COUNT) {
-            telemetry.addLine("⚠ No balls loaded!");
-            telemetry.update();
-            return;
-        }
-
-        shooterMotor.setPower(SHOOTER_POWER);
-        sleep(SHOOT_DURATION_MS);
-        shooterMotor.setPower(0);
-
-        ballsFired++;
-
-        if (ballsFired >= SLOT_COUNT) {
-            telemetry.addLine("✓ All balls fired! Reload spindexer.");
-            telemetry.update();
+    private void handleScoopInput() {
+        if (gamepad2.left_bumper
+                && scoopDebounce.milliseconds() > DEBOUNCE_MS
+                && scoopState == ScoopState.IDLE) {
+            scoopDebounce.reset();
+            transitionTo(ScoopState.EXTENDING);
         }
     }
 
-    /** Pushes status information to the Driver Station screen. */
+    // ─── Scoop State Machine ──────────────────────────────────────────────────
+
+    /**
+     * Called every loop iteration. Checks elapsed time and advances the
+     * scoop through its states without ever calling sleep().
+     *
+     * State flow:
+     *   IDLE → EXTENDING → HOLDING → RETRACTING → IDLE
+     */
+    private void runScoopStateMachine() {
+        switch (scoopState) {
+
+            case IDLE:
+                // Nothing to do — waiting for a button press via handleScoopInput().
+                break;
+
+            case EXTENDING:
+                // Wait for the servo to physically reach the extended position,
+                // then move into the HOLDING state.
+                if (stateTimer.milliseconds() >= SERVO_TRAVEL_MS) {
+                    transitionTo(ScoopState.HOLDING);
+                }
+                break;
+
+            case HOLDING:
+                // Scoop is extended and holding. Once SCOOP_HOLD_MS has elapsed,
+                // command the servo to retract.
+                if (stateTimer.milliseconds() >= SCOOP_HOLD_MS) {
+                    transitionTo(ScoopState.RETRACTING);
+                }
+                break;
+
+            case RETRACTING:
+                // Wait for the servo to physically return to the retracted position,
+                // then return to IDLE and allow the next scoop cycle.
+                if (stateTimer.milliseconds() >= SERVO_TRAVEL_MS) {
+                    transitionTo(ScoopState.IDLE);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Moves the scoop state machine to a new state, commands the servo
+     * to the appropriate position, and resets the state timer.
+     *
+     * Centralising servo commands here means each state only needs one
+     * place to look for what action it triggers.
+     */
+    private void transitionTo(ScoopState newState) {
+        scoopState = newState;
+        stateTimer.reset();
+
+        switch (newState) {
+            case EXTENDING:
+                scoopServo.setPosition(SCOOP_EXTENDED_POS);
+                break;
+            case RETRACTING:
+                scoopServo.setPosition(SCOOP_RETRACTED_POS);
+                break;
+            case HOLDING:
+            case IDLE:
+                // No servo command needed for these transitions
+                break;
+        }
+    }
+
+    // ─── Telemetry ────────────────────────────────────────────────────────────
+
     private void updateTelemetry() {
-        telemetry.addLine("=== Spindexer Status ===");
-        telemetry.addData("Current Slot",    "%d / %d", currentSlot + 1, SLOT_COUNT);
-        telemetry.addData("Balls Fired",     ballsFired);
-        telemetry.addData("Balls Remaining", SLOT_COUNT - ballsFired);
-        telemetry.addLine();
-        telemetry.addLine("=== Controls (Gamepad 2) ===");
-        telemetry.addLine("Right Bumper → Advance to next slot");
-        telemetry.addLine("Left Bumper  → Fire / shoot ball");
-        telemetry.addLine();
-        telemetry.addData("Spindexer Encoder", spindexerMotor.getCurrentPosition());
-        telemetry.addData("Shooter Power",     shooterMotor.getPower());
+        telemetry.addLine("─── Spindexer ───────────────────");
+        telemetry.addData("Active Slot",    "%d / %d", currentSlot + 1, SLOT_POSITIONS.length);
+        telemetry.addData("Servo Position", "%.2f",    spindexerServo.getPosition());
+
+        telemetry.addLine("─── Scoop ───────────────────────");
+        telemetry.addData("State",          scoopState);
+        telemetry.addData("State Timer",    "%.0f ms",  stateTimer.milliseconds());
+        telemetry.addData("Servo Position", "%.2f",     scoopServo.getPosition());
+
+        telemetry.addLine("─── Controls (Gamepad 2) ────────");
+        telemetry.addLine("RB → Next slot");
+        telemetry.addLine("LB → Scoop ball to ramp");
         telemetry.update();
     }
 }
