@@ -1,5 +1,3 @@
-// PedroPathing for robot in the RED STARTING CORNER
-
 package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
@@ -55,29 +53,24 @@ public class PedroAutonomous extends OpMode {
     public PathChain Path5;
     public PathChain Path6;
     public PathChain Path7;
-    public PathChain Path8;
-    public PathChain Path9;
-    public PathChain Path10;
-    public PathChain Path11;
-    public PathChain Path12;
-    public PathChain Path13;
 
     public Paths(Follower follower) {
       Path1 = follower.pathBuilder()
           .addPath(
-            new BezierLine(
-              new Pose(123.631, 131.613),
-            new Pose(73.474, 71.596)
+            new BezierCurve(
+              new Pose(117.000, 126.000),
+            new Pose(102.000, 108.000),
+            new Pose(105.000, 84.000)
             )
           )
-          .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(180))
+          .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(0))
           .build();
 
       Path2 = follower.pathBuilder()
           .addPath(
             new BezierLine(
-              new Pose(73.474, 71.596),
-            new Pose(105.683, 34.892)
+              new Pose(105.000, 84.000),
+            new Pose(126.000, 84.000)
             )
           )
           .setTangentHeadingInterpolation()
@@ -85,29 +78,31 @@ public class PedroAutonomous extends OpMode {
 
       Path3 = follower.pathBuilder()
           .addPath(
-            new BezierLine(
-              new Pose(105.683, 34.892),
-            new Pose(133.436, 34.380)
+            new BezierCurve(
+              new Pose(126.000, 84.000),
+            new Pose(117.000, 105.000),
+            new Pose(117.000, 126.000)
             )
           )
-          .setTangentHeadingInterpolation()
+          .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(35))
           .build();
 
       Path4 = follower.pathBuilder()
           .addPath(
-            new BezierLine(
-              new Pose(133.436, 34.380),
-            new Pose(73.045, 71.607)
+            new BezierCurve(
+              new Pose(117.000, 126.000),
+            new Pose(96.000, 99.000),
+            new Pose(105.000, 60.000)
             )
           )
-          .setTangentHeadingInterpolation()
+          .setLinearHeadingInterpolation(Math.toRadians(35), Math.toRadians(0))
           .build();
 
       Path5 = follower.pathBuilder()
           .addPath(
             new BezierLine(
-              new Pose(73.045, 71.607),
-            new Pose(122.735, 131.034)
+              new Pose(105.000, 60.000),
+            new Pose(126.000, 60.000)
             )
           )
           .setTangentHeadingInterpolation()
@@ -115,82 +110,24 @@ public class PedroAutonomous extends OpMode {
 
       Path6 = follower.pathBuilder()
           .addPath(
-            new BezierLine(
-              new Pose(122.735, 131.034),
-            new Pose(79.252, 62.569)
+            new BezierCurve(
+              new Pose(126.000, 60.000),
+            new Pose(102.000, 102.000),
+            new Pose(117.000, 126.000)
             )
           )
-          .setTangentHeadingInterpolation()
+          .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(35))
           .build();
 
       Path7 = follower.pathBuilder()
           .addPath(
-            new BezierLine(
-              new Pose(79.252, 62.569),
-            new Pose(130.112, 58.443)
+            new BezierCurve(
+              new Pose(117.000, 126.000),
+            new Pose(90.000, 96.000),
+            new Pose(105.000, 36.000)
             )
           )
-          .setTangentHeadingInterpolation()
-          .build();
-
-      Path8 = follower.pathBuilder()
-          .addPath(
-            new BezierLine(
-              new Pose(130.112, 58.443),
-            new Pose(72.744, 72.240)
-            )
-          )
-          .setTangentHeadingInterpolation()
-          .build();
-
-      Path9 = follower.pathBuilder()
-          .addPath(
-            new BezierLine(
-              new Pose(72.744, 72.240),
-            new Pose(123.964, 131.634)
-            )
-          )
-          .setTangentHeadingInterpolation()
-          .build();
-
-      Path10 = follower.pathBuilder()
-          .addPath(
-            new BezierLine(
-              new Pose(123.964, 131.634),
-            new Pose(97.355, 82.969)
-            )
-          )
-          .setTangentHeadingInterpolation()
-          .build();
-
-      Path11 = follower.pathBuilder()
-          .addPath(
-            new BezierLine(
-              new Pose(97.355, 82.969),
-            new Pose(131.422, 83.613)
-            )
-          )
-          .setTangentHeadingInterpolation()
-          .build();
-
-      Path12 = follower.pathBuilder()
-          .addPath(
-            new BezierLine(
-              new Pose(131.422, 83.613),
-            new Pose(123.299, 131.470)
-            )
-          )
-          .setTangentHeadingInterpolation()
-          .build();
-
-      Path13 = follower.pathBuilder()
-          .addPath(
-            new BezierLine(
-              new Pose(123.299, 131.470),
-            new Pose(129.337, 133.719)
-            )
-          )
-          .setTangentHeadingInterpolation()
+          .setLinearHeadingInterpolation(Math.toRadians(35), Math.toRadians(0))
           .build();
     }
   }
